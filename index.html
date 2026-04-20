@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Code Editor Pro</title>
+
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        window.tailwind = window.tailwind || {};
+        window.tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        vs: {
+                            dark: 'var(--bg-dark, #1e1e1e)',
+                            sidebar: 'var(--bg-sidebar, #252526)',
+                            panel: 'var(--bg-panel, #1e1e1e)',
+                            bar: 'var(--bg-bar, #333333)',
+                            border: 'var(--border-color, #3c3c3c)',
+                            tab: 'var(--bg-tab, #2d2d2d)',
+                            tabActive: 'var(--bg-tab-active, #1e1e1e)',
+                            text: 'var(--text-main, #cccccc)',
+                            accent: 'var(--accent-color, #007acc)',
+                            hover: 'var(--bg-hover, #2a2d2e)',
+                            warning: '#cca700',
+                            error: '#f48771',
+                            success: '#89d185'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Segoe UI', 'Roboto', 'sans-serif'],
+                        mono: ['Fira Code', 'Consolas', 'Courier New', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- Ace Editor & Ext -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ext-language_tools.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ext-beautify.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ext-searchbox.js"></script>
+
+    <!-- JSZip for Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        /* CSS Variables for Dynamic Theming */
+        :root {
+            --bg-dark: #1e1e1e; --bg-sidebar: #252526; --bg-panel: #1e1e1e;
+            --bg-bar: #333333; --border-color: #3c3c3c; --bg-tab: #2d2d2d;
+            --bg-tab-active: #1e1e1e; --text-main: #cccccc; --accent-color: #007acc;
+            --bg-hover: #2a2d2e;
+        }
+
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-main); }
+        ::-webkit-scrollbar-corner { background: transparent; }
+
+        html, body { height: 100%; margin: 0; overflow: hidden; background-color: var(--bg-dark); color: var(--text-main); }
+        
+        .layout-container { display: flex; flex-direction: column; height: 100vh; }
+        .main-workspace { display: flex; flex: 1; overflow: hidden; position: relative; }
+        #editor-container { flex: 1; position: relative; background-color: var(--bg-dark); }
+        #editor { position: absolute; top: 0; right: 0; bottom: 0; left: 0; font-size: 14px; }
+
+        /* Asset Image Viewer Layer */
+        #image-viewer { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; z-index: 15; background-color: var(--bg-dark); overflow: hidden; }
+        #viewer-img { max-width: 90%; max-height: 90%; object-fit: contain; box-shadow: 0 4px 12px rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 4px; background: repeating-conic-gradient(#80808033 0% 25%, transparent 0% 50%) 50% / 20px 20px; }
+
+        .resizer { width: 4px; background: var(--border-color); cursor: col-resize; transition: background 0.2s; z-index: 10; }
+        .resizer:hover, .resizer.resizing { background: var(--accent-color); }
+        .resizer-y { height: 4px; width: 100%; background: var(--border-color); cursor: row-resize; transition: background 0.2s; z-index: 10; }
+        .resizer-y:hover, .resizer-y.resizing { background: var(--accent-color); }
+
+        .tree-item { cursor: pointer; user-select: none; transition: background 0.1s; }
+        .tree-item:hover { background-color: var(--bg-hover); }
+        .tree-item.active { background-color: var(--accent-color); color: #ffffff; }
+        
+        .editor-tab { border-right: 1px solid var(--border-color); border-bottom: 1px solid transparent; min-width: 120px; max-width: 200px; cursor: pointer; }
+        .editor-tab.active { background-color: var(--bg-tab-active); color: var(--text-main); border-top: 1px solid var(--accent-color); border-bottom-color: var(--bg-tab-active); }
+        .editor-tab .close-btn:hover { background-color: rgba(255,255,255,0.1); border-radius: 4px; }
+
+        .log-entry { padding: 4px 8px; font-family: monospace; border-bottom: 1px solid var(--border-color); font-size: 12px; white-space: pre-wrap; word-wrap: break-word;}
+        .log-error { color: #f48771; background-color: rgba(244, 135, 113, 0.1); }
+        .log-warn { color: #cca700; background-color: rgba(204, 167, 0, 0.1); }
+        .log-info { color: #89d185; }
+        .log-log { color: var(--text-main); }
+
+        .hidden-sidebar { display: none !important; }
+        .iframe-overlay { position: absolute; inset: 0; z-index: 20; display: none; }
+        .resizing .iframe-overlay { display: block; }
+        
+        #loader-overlay { background: var(--bg-dark); z-index: 50; }
+
+        .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-color); transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        .toggle-switch input:checked + .slider { background-color: var(--accent-color); }
+        .toggle-switch input:checked + .slider:before { transform: translateX(20px); }
+
+        .settings-tab.active { background-color: var(--accent-color); color: white; font-weight: 500;}
+
+        /* Custom Context Menu */
+        #context-menu { background-color: var(--bg-panel); border: 1px solid var(--border-color); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); }
+        #context-menu button:hover { background-color: var(--accent-color); color: white; }
+
+        .swal2-popup.dark-swal { background: var(--bg-sidebar); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 8px; }
+        .swal2-title.dark-swal { color: var(--text-main); }
+        .swal2-input.dark-swal { background: var(--bg-dark) !important; color: var(--text-main) !important; border: 1px solid var(--border-color) !important; box-shadow: none !important;}
+        .swal2-input.dark-swal:focus { border-color: var(--accent-color) !important; }
+        .swal2-confirm.dark-swal { background-color: var(--accent-color) !important; color: white !important; }
+        .swal2-cancel.dark-swal { background-color: var(--border-color) !important; color: var(--text-main) !important; }
+    </style>
+</head>
+<body class="text-vs-text text-sm transition-colors duration-300" onclick="hideContextMenu()">
+
+    <!-- Context Menu Overlay -->
+    <div id="context-menu" class="absolute rounded py-1 hidden z-[60] min-w-[160px] text-xs font-sans text-vs-text">
+        <button class="w-full text-left px-4 py-1.5 transition-colors flex items-center" onclick="handleCtxAction('rename')"><i class="ph ph-pencil-simple mr-2"></i>Rename</button>
+        <button class="w-full text-left px-4 py-1.5 transition-colors flex items-center text-vs-error hover:!bg-vs-error" onclick="handleCtxAction('delete')"><i class="ph ph-trash mr-2"></i>Delete</button>
+        <div id="ctx-divider" class="h-px bg-vs-border my-1"></div>
+        <button id="ctx-insert-css" class="w-full text-left px-4 py-1.5 transition-colors flex items-center" onclick="handleCtxAction('insert-css')"><i class="ph ph-link mr-2"></i>Insert CSS Link</button>
+        <button id="ctx-insert-js" class="w-full text-left px-4 py-1.5 transition-colors flex items-center" onclick="handleCtxAction('insert-js')"><i class="ph ph-code mr-2"></i>Insert Script Tag</button>
+        <button id="ctx-insert-img" class="w-full text-left px-4 py-1.5 transition-colors flex items-center" onclick="handleCtxAction('insert-img')"><i class="ph ph-image mr-2"></i>Insert Image Tag</button>
+    </div>
+
+    <!-- Startup Loader -->
+    <div id="loader-overlay" class="absolute inset-0 flex flex-col items-center justify-center transition-opacity duration-300">
+        <i class="ph ph-spinner ph-spin text-4xl text-vs-accent mb-4"></i>
+        <p>Loading Workspace...</p>
+    </div>
+
+    <!-- MAIN EDITOR UI -->
+    <div class="layout-container">
+        <!-- Top Menu Bar -->
+        <header class="bg-vs-bar h-10 flex items-center px-4 shrink-0 border-b border-vs-border justify-between select-none">
+            <div class="flex items-center space-x-4">
+                <i class="ph-fill ph-code text-vs-accent text-xl"></i>
+                <div class="flex space-x-2">
+                    <button class="px-2 py-1 hover:bg-vs-hover rounded text-xs transition-colors" onclick="createNewFile()"><i class="ph ph-file-plus mr-1"></i>New File</button>
+                    <button class="px-2 py-1 hover:bg-vs-hover rounded text-xs transition-colors" onclick="formatCode()"><i class="ph ph-magic-wand mr-1"></i>Format</button>
+                    <button class="px-2 py-1 hover:bg-vs-hover rounded text-xs transition-colors" onclick="resetWorkspace()"><i class="ph ph-arrow-counter-clockwise mr-1"></i>Reset</button>
+                </div>
+            </div>
+            
+            <div class="text-xs font-semibold absolute left-1/2 transform -translate-x-1/2 hidden md:block opacity-70" id="project-title">
+                My Workspace - Auto-saving
+            </div>
+
+            <div class="flex items-center space-x-1">
+                <button class="flex items-center space-x-1 bg-vs-accent hover:opacity-80 text-white px-3 py-1 rounded text-xs transition shadow-sm mr-2" onclick="runPreview(true)">
+                    <i class="ph-fill ph-play"></i><span>Run (Ctrl+Enter)</span>
+                </button>
+                <div class="h-4 w-px bg-vs-border mx-1"></div>
+                
+                <button class="p-1.5 hover:bg-vs-hover rounded transition-colors" title="Copy Code" onclick="copyActiveCode()">
+                    <i class="ph ph-copy"></i>
+                </button>
+                <button class="p-1.5 hover:bg-vs-hover rounded transition-colors" title="Download ZIP" onclick="exportZip()">
+                    <i class="ph ph-download-simple"></i>
+                </button>
+                <label class="p-1.5 hover:bg-vs-hover rounded cursor-pointer transition-colors" title="Import Files">
+                    <i class="ph ph-file-arrow-up"></i>
+                    <input type="file" id="file-import" multiple class="hidden" onchange="importFiles(event)">
+                </label>
+                <label class="p-1.5 hover:bg-vs-hover rounded cursor-pointer transition-colors" title="Import Folder">
+                    <i class="ph ph-folder-open"></i>
+                    <input type="file" id="folder-import" webkitdirectory directory multiple class="hidden" onchange="importFiles(event)">
+                </label>
+                <button class="p-1.5 hover:bg-vs-hover rounded transition-colors" title="Find (Ctrl+F)" onclick="editor.execCommand('find')">
+                    <i class="ph ph-magnifying-glass"></i>
+                </button>
+                <button class="p-1.5 hover:bg-vs-hover rounded transition-colors text-vs-accent" title="Settings (Ctrl+,)" onclick="openSettings()">
+                    <i class="ph-fill ph-gear"></i>
+                </button>
+                <button class="p-1.5 hover:bg-vs-hover rounded md:hidden transition-colors" title="Toggle Sidebar" onclick="toggleSidebar()">
+                    <i class="ph ph-list"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <div class="main-workspace" id="drop-zone">
+            
+            <!-- Sidebar -->
+            <aside id="sidebar" class="bg-vs-sidebar w-64 flex-shrink-0 flex flex-col border-r border-vs-border transition-all duration-200">
+                <div class="px-4 py-2 uppercase text-[11px] font-semibold tracking-wider opacity-60 flex justify-between items-center group shrink-0">
+                    <span>Explorer</span>
+                    <div class="space-x-1 opacity-0 group-hover:opacity-100 transition-opacity flex">
+                        <button class="p-0.5 hover:bg-vs-hover rounded" onclick="createNewFile()" title="New File"><i class="ph ph-file-plus"></i></button>
+                        <button class="p-0.5 hover:bg-vs-hover rounded" onclick="renderFileTree()" title="Refresh"><i class="ph ph-arrows-clockwise"></i></button>
+                    </div>
+                </div>
+                <div id="file-tree" class="flex-1 overflow-y-auto py-1"></div>
+            </aside>
+
+            <!-- Vertical Resizer 1 -->
+            <div class="resizer" id="resizer-sidebar"></div>
+
+            <!-- Middle Area (Editor + Panel) -->
+            <main class="flex-1 flex flex-col min-w-0 bg-vs-dark relative">
+                <!-- Editor Tabs -->
+                <div class="bg-vs-sidebar h-9 flex items-end shrink-0 overflow-x-auto no-scrollbar border-b border-vs-border" id="tabs-container"></div>
+
+                <!-- Editor Container -->
+                <div id="editor-container" class="flex-1 relative">
+                    <div id="editor"></div>
+                    
+                    <!-- Image Viewer -->
+                    <div id="image-viewer">
+                        <img id="viewer-img" src="">
+                    </div>
+
+                    <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center opacity-50 hidden z-10 bg-vs-dark">
+                        <i class="ph ph-code text-6xl mb-4 opacity-40"></i>
+                        <p class="text-lg">Select a file to start coding</p>
+                        <p class="text-xs mt-2 opacity-70">Drag and drop folders/assets here directly.</p>
+                    </div>
+                </div>
+
+                <!-- Horizontal Resizer -->
+                <div class="resizer-y" id="resizer-bottom"></div>
+
+                <!-- Bottom Panel -->
+                <div id="bottom-panel" class="bg-vs-panel h-48 flex flex-col border-t border-vs-border shrink-0">
+                    <div class="h-8 flex items-center px-4 border-b border-vs-border shrink-0 justify-between">
+                        <button class="uppercase text-xs tracking-wide font-semibold text-vs-text border-b-2 border-vs-accent pb-1 -mb-[3px]">Console</button>
+                        <div class="flex space-x-2">
+                            <button class="p-1 hover:bg-vs-hover rounded text-xs flex items-center opacity-70" onclick="clearConsole()"><i class="ph ph-prohibit mr-1"></i>Clear</button>
+                            <button class="p-1 hover:bg-vs-hover rounded opacity-70" onclick="toggleBottomPanel()"><i class="ph ph-x"></i></button>
+                        </div>
+                    </div>
+                    <div id="console-output" class="flex-1 overflow-y-auto p-2 bg-vs-dark select-text"></div>
+                </div>
+            </main>
+
+            <!-- Vertical Resizer 2 -->
+            <div class="resizer" id="resizer-preview"></div>
+
+            <!-- Right Area (Preview) -->
+            <aside id="preview-area" class="w-1/3 flex-shrink-0 flex flex-col bg-white border-l border-vs-border relative">
+                <div class="iframe-overlay"></div> 
+                <div class="h-9 bg-vs-sidebar flex items-center px-4 shrink-0 border-b border-vs-border text-vs-text justify-between">
+                    <div class="flex items-center space-x-2 text-xs">
+                        <i class="ph ph-browser"></i><span>Live Preview</span>
+                    </div>
+                    <div class="flex space-x-1">
+                        <button class="p-1 hover:bg-vs-hover rounded" onclick="runPreview(true)" title="Refresh Preview"><i class="ph ph-arrows-clockwise"></i></button>
+                        <button class="p-1 hover:bg-vs-hover rounded" onclick="togglePreview()" title="Close Preview"><i class="ph ph-x"></i></button>
+                    </div>
+                </div>
+                <div class="flex-1 relative bg-white">
+                    <iframe id="preview-iframe" class="absolute inset-0 w-full h-full border-0 bg-white" sandbox="allow-scripts allow-modals allow-same-origin"></iframe>
+                </div>
+            </aside>
+
+        </div>
+
+        <!-- Status Bar -->
+        <footer class="bg-vs-accent text-white h-6 flex items-center px-3 text-[11px] shrink-0 justify-between select-none z-10">
+            <div class="flex items-center space-x-4">
+                <span class="flex items-center space-x-1 cursor-pointer hover:bg-white/20 px-1 rounded transition" onclick="toggleSidebar()"><i class="ph ph-sidebar-simple"></i> <span>Toggle Sidebar</span></span>
+                <span id="status-msg"><i class="ph ph-check-circle mr-1"></i>Ready</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="status-cursor">Ln 1, Col 1</span>
+                <span id="status-mode">HTML</span>
+                <span class="cursor-pointer hover:bg-white/20 px-1 rounded transition flex items-center" onclick="toggleBottomPanel()"><i class="ph ph-terminal-window mr-1 text-sm"></i>Console</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- SETTINGS PANEL MODAL -->
+    <div id="settings-modal" class="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 flex justify-center items-center">
+        <div class="bg-vs-panel w-full h-full md:w-3/4 md:h-[85%] md:rounded-xl shadow-2xl flex flex-col md:flex-row overflow-hidden transform scale-95 transition-transform duration-300 border border-vs-border" id="settings-content">
+            <!-- Mobile Header -->
+            <div class="md:hidden flex justify-between items-center p-4 border-b border-vs-border bg-vs-sidebar">
+                <h2 class="text-lg font-bold text-vs-text"><i class="ph ph-gear mr-2"></i>Settings</h2>
+                <button onclick="closeSettings()" class="p-2 hover:bg-vs-hover rounded-full"><i class="ph ph-x text-xl"></i></button>
+            </div>
+            <!-- Settings Sidebar -->
+            <div class="w-full md:w-64 bg-vs-sidebar border-r border-vs-border flex flex-col shrink-0">
+                <div class="hidden md:flex justify-between items-center p-5 border-b border-vs-border">
+                    <h2 class="text-lg font-bold text-vs-text tracking-wide"><i class="ph-fill ph-gear mr-2 text-vs-accent"></i>Settings</h2>
+                </div>
+                <div class="flex flex-row md:flex-col overflow-x-auto md:overflow-y-auto p-2 md:space-y-1 border-b md:border-b-0 border-vs-border">
+                    <button class="settings-tab active px-4 py-3 md:py-2 rounded text-sm text-left hover:bg-vs-hover transition whitespace-nowrap" onclick="switchSettingsTab('editor', this)">Editor Settings</button>
+                    <button class="settings-tab px-4 py-3 md:py-2 rounded text-sm text-left hover:bg-vs-hover transition whitespace-nowrap" onclick="switchSettingsTab('theme', this)">Theme & Colors</button>
+                    <button class="settings-tab px-4 py-3 md:py-2 rounded text-sm text-left hover:bg-vs-hover transition whitespace-nowrap" onclick="switchSettingsTab('layout', this)">Workspace Layout</button>
+                </div>
+            </div>
+            <!-- Settings Content -->
+            <div class="flex-1 bg-vs-dark flex flex-col overflow-hidden relative">
+                <button onclick="closeSettings()" class="hidden md:block absolute top-4 right-4 p-2 hover:bg-vs-hover text-vs-text rounded-full transition z-10"><i class="ph ph-x text-xl"></i></button>
+                <div class="flex-1 overflow-y-auto p-6 md:p-8">
+                    <!-- Editor Preferences -->
+                    <div id="sec-editor" class="settings-section space-y-6">
+                        <h3 class="text-xl font-semibold mb-6 border-b border-vs-border pb-2">Editor Preferences</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="flex flex-col space-y-2">
+                                <label class="text-sm font-medium opacity-80">Font Size</label>
+                                <select id="set-fontsize" class="bg-vs-sidebar border border-vs-border text-vs-text text-sm rounded p-2 outline-none">
+                                    <option value="12px">Small (12px)</option>
+                                    <option value="14px">Medium (14px)</option>
+                                    <option value="16px">Large (16px)</option>
+                                    <option value="18px">Extra Large (18px)</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col space-y-2">
+                                <label class="text-sm font-medium opacity-80">Font Family</label>
+                                <select id="set-fontfamily" class="bg-vs-sidebar border border-vs-border text-vs-text text-sm rounded p-2 outline-none">
+                                    <option value="'Fira Code', monospace">Fira Code</option>
+                                    <option value="Consolas, monospace">Consolas</option>
+                                    <option value="'Courier New', monospace">Courier New</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="bg-vs-sidebar p-4 rounded-lg border border-vs-border space-y-4 mt-6">
+                            <div class="flex items-center justify-between">
+                                <div><h4 class="font-medium">Show Line Numbers</h4><p class="text-xs opacity-60">Display line numbers in the editor gutter.</p></div>
+                                <label class="toggle-switch"><input type="checkbox" id="set-linenumbers"><span class="slider"></span></label>
+                            </div>
+                            <div class="h-px bg-vs-border"></div>
+                            <div class="flex items-center justify-between">
+                                <div><h4 class="font-medium">Word Wrap</h4><p class="text-xs opacity-60">Wrap lines that exceed the editor width.</p></div>
+                                <label class="toggle-switch"><input type="checkbox" id="set-wordwrap"><span class="slider"></span></label>
+                            </div>
+                            <div class="h-px bg-vs-border"></div>
+                            <div class="flex items-center justify-between">
+                                <div><h4 class="font-medium">Auto-save</h4><p class="text-xs opacity-60">Automatically save files as you type.</p></div>
+                                <label class="toggle-switch"><input type="checkbox" id="set-autosave"><span class="slider"></span></label>
+                            </div>
+                            <div class="h-px bg-vs-border"></div>
+                            <div class="flex items-center justify-between">
+                                <div><h4 class="font-medium">Tailwind CSS in Preview</h4><p class="text-xs opacity-60">Automatically inject Tailwind CDN into the live preview.</p></div>
+                                <label class="toggle-switch"><input type="checkbox" id="set-tailwind"><span class="slider"></span></label>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Theme & Colors -->
+                    <div id="sec-theme" class="settings-section space-y-6 hidden">
+                        <h3 class="text-xl font-semibold mb-6 border-b border-vs-border pb-2">Theme & Colors</h3>
+                        <div class="flex flex-col space-y-2 max-w-sm">
+                            <label class="text-sm font-medium opacity-80">App Interface Theme</label>
+                            <select id="set-apptheme" class="bg-vs-sidebar border border-vs-border text-vs-text text-sm rounded p-2 outline-none">
+                                <option value="vscode">VS Code Dark (Default)</option>
+                                <option value="light">Light Mode</option>
+                                <option value="neon">Neon Cyberpunk</option>
+                                <option value="custom">Custom Colors</option>
+                            </select>
+                        </div>
+                        <div id="custom-colors-box" class="bg-vs-sidebar p-4 rounded-lg border border-vs-border space-y-4 hidden">
+                            <p class="text-xs opacity-80 mb-2 font-semibold uppercase tracking-wide">Custom Colors</p>
+                            <div class="flex items-center justify-between"><span class="text-sm">Background Color</span><input type="color" id="set-bgcolor" class="w-10 h-10 p-0 border-0 rounded cursor-pointer bg-transparent"></div>
+                            <div class="flex items-center justify-between"><span class="text-sm">Text Color</span><input type="color" id="set-textcolor" class="w-10 h-10 p-0 border-0 rounded cursor-pointer bg-transparent"></div>
+                            <div class="flex items-center justify-between"><span class="text-sm">Accent Color</span><input type="color" id="set-accentcolor" class="w-10 h-10 p-0 border-0 rounded cursor-pointer bg-transparent"></div>
+                        </div>
+                        <div class="flex flex-col space-y-2 max-w-sm mt-6">
+                            <label class="text-sm font-medium opacity-80">Code Editor Theme</label>
+                            <select id="set-editortheme" class="bg-vs-sidebar border border-vs-border text-vs-text text-sm rounded p-2 outline-none">
+                                <option value="ace/theme/vs-dark">VS Code Dark</option>
+                                <option value="ace/theme/chrome">Chrome (Light)</option>
+                                <option value="ace/theme/monokai">Monokai</option>
+                                <option value="ace/theme/dracula">Dracula</option>
+                                <option value="ace/theme/github">GitHub (Light)</option>
+                                <option value="ace/theme/twilight">Twilight</option>
+                            </select>
+                        </div>
+                    </div>
+                    <!-- Workspace Layout -->
+                    <div id="sec-layout" class="settings-section space-y-6 hidden">
+                        <h3 class="text-xl font-semibold mb-6 border-b border-vs-border pb-2">Workspace Layout</h3>
+                        <div class="bg-vs-sidebar p-4 rounded-lg border border-vs-border space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div><h4 class="font-medium">Show Sidebar</h4><p class="text-xs opacity-60">Display the file explorer on the left.</p></div>
+                                <label class="toggle-switch"><input type="checkbox" id="set-sidebar"><span class="slider"></span></label>
+                            </div>
+                            <div class="h-px bg-vs-border"></div>
+                            <div class="flex items-center justify-between">
+                                <div><h4 class="font-medium">Show Console Panel</h4><p class="text-xs opacity-60">Display the bottom logs panel.</p></div>
+                                <label class="toggle-switch"><input type="checkbox" id="set-console"><span class="slider"></span></label>
+                            </div>
+                        </div>
+                        <div class="pt-4">
+                            <button onclick="toggleFullScreen()" class="w-full md:w-auto px-6 py-2 bg-vs-sidebar border border-vs-border rounded hover:bg-vs-hover transition flex items-center justify-center space-x-2">
+                                <i class="ph ph-corners-out"></i><span>Toggle Fullscreen Mode</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 border-t border-vs-border bg-vs-sidebar flex justify-between items-center shrink-0">
+                    <button onclick="factoryResetSettings()" class="text-vs-error hover:underline text-sm font-medium"><i class="ph ph-warning-circle mr-1"></i>Reset to Default</button>
+                    <button onclick="closeSettings()" class="bg-vs-accent text-white px-6 py-2 rounded text-sm font-semibold hover:opacity-80 transition shadow">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Settings Management ---
+        const SETTINGS_KEY = 'web_code_editor_settings';
+        const defaultSettings = { fontSize: '14px', fontFamily: "'Fira Code', monospace", lineNumbers: true, wordWrap: true, autoSave: true, enableTailwind: true, appTheme: 'vscode', editorTheme: 'ace/theme/vs-dark', customBg: '#1e1e1e', customText: '#cccccc', customAccent: '#007acc', showSidebar: true, showConsole: true };
+        let appSettings = { ...defaultSettings };
+        const appThemes = {
+            vscode: { bgDark: '#1e1e1e', bgSidebar: '#252526', bgPanel: '#1e1e1e', bgBar: '#333333', border: '#3c3c3c', bgTab: '#2d2d2d', bgTabActive: '#1e1e1e', textMain: '#cccccc', accent: '#007acc', hover: '#2a2d2e' },
+            light: { bgDark: '#ffffff', bgSidebar: '#f3f3f3', bgPanel: '#ffffff', bgBar: '#e5e5e5', border: '#cccccc', bgTab: '#e5e5e5', bgTabActive: '#ffffff', textMain: '#333333', accent: '#005fcc', hover: '#e0e0e0' },
+            neon: { bgDark: '#090914', bgSidebar: '#101026', bgPanel: '#090914', bgBar: '#171738', border: '#2a2a5a', bgTab: '#101026', bgTabActive: '#090914', textMain: '#00ffff', accent: '#ff00ff', hover: '#1f1f45' }
+        };
+
+        function initSettings() {
+            const saved = localStorage.getItem(SETTINGS_KEY);
+            if (saved) { try { appSettings = { ...defaultSettings, ...JSON.parse(saved) }; } catch (e) { console.error("Settings parse error."); } }
+            applyThemeVariables(); bindSettingsUI();
+        }
+
+        // --- SweetAlert2 Setup ---
+        const Toast = Swal.mixin({ toast: true, position: 'bottom-end', showConfirmButton: false, timer: 3000, timerProgressBar: true, customClass: { popup: 'dark-swal' } });
+        const Modal = Swal.mixin({ customClass: { popup: 'dark-swal', title: 'dark-swal', input: 'dark-swal', confirmButton: 'dark-swal', cancelButton: 'dark-swal' }, buttonsStyling: true });
+
+        // --- Core VFS Database & State ---
+        const DB_NAME = 'WebCodeEditorDB';
+        const STORE_NAME = 'workspace';
+        
+        const defaultFiles = {
+            "index.html": `<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <title>Pro Editor</title>\n    <link rel="stylesheet" href="css/style.css">\n</head>\n<body class="bg-gray-100 flex items-center justify-center h-screen m-0">\n    <div class="bg-white p-8 rounded-lg shadow-md text-center max-w-sm border border-gray-200">\n        <img src="assets/logo.svg" alt="Logo" class="w-20 h-20 mx-auto mb-4 drop-shadow-md">\n        <h1 class="text-3xl font-bold text-gray-800 mb-2">Editor Pro</h1>\n        <p class="text-gray-600 mb-6 text-sm">Full Asset System, Auto-linked Previews, and Native Drag & Drop.</p>\n        <button id="btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-full transition-colors shadow hover:shadow-lg">Execute JS</button>\n    </div>\n    <script src="js/script.js"><\/script>\n</body>\n</html>`,
+            "css/style.css": `/* Add your CSS here */\nbody {\n    font-family: system-ui, -apple-system, sans-serif;\n}`,
+            "js/script.js": `document.getElementById('btn').addEventListener('click', () => {\n    console.log('Action Executed!');\n    alert('Welcome to Pro Editor! Your assets are loaded properly.');\n});`,
+            "assets/logo.svg": `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzI1NjNlYiI+PHBhdGggZD0iTTEyIDJMMiAxMmwxMCAxMCAxMC0xMEwxMiAyem0wIDE4LjJMMi44IDEyIDEyIDMuOCAyMS4yIDEyIDEyIDIwLjJ6Ii8+PHBhdGggZD0iTTEyIDYuNWwtNS41IDUuNSA1LjUgNS41IDUuNS01LjV6IiBmaWxsPSIjM2I4MmY2Ii8+PC9zdmc+`
+        };
+
+        let fileSystem = {};
+        let openTabs = [];
+        let activeFile = null;
+        let expandedFolders = new Set(['', 'css', 'js', 'assets']);
+        let saveTimeout;
+        let isInitializing = true;
+        let ctxTarget = null;
+        let ctxIsFolder = false;
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onupgradeneeded = (e) => { const db = e.target.result; if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME); };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function loadState() {
+            try {
+                const db = await openDB();
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const request = tx.objectStore(STORE_NAME).get('currentSession');
+                
+                return new Promise((resolve) => {
+                    request.onsuccess = () => {
+                        const data = request.result;
+                        if (data && data.files && Object.keys(data.files).length > 0) {
+                            fileSystem = data.files;
+                            openTabs = data.tabs || Object.keys(fileSystem).slice(0, 3);
+                            activeFile = data.active && fileSystem[data.active] ? data.active : openTabs[0];
+                            if(data.expandedFolders) expandedFolders = new Set(data.expandedFolders);
+                        } else resetToDefault(false);
+                        resolve();
+                    };
+                    request.onerror = () => { resetToDefault(false); resolve(); };
+                });
+            } catch (e) { resetToDefault(false); }
+        }
+
+        async function saveState() {
+            if (isInitializing) return;
+            if (activeFile && fileSystem[activeFile] !== undefined && !isBinaryFile(activeFile)) {
+                fileSystem[activeFile] = editor.getValue();
+            }
+            const state = { files: fileSystem, tabs: openTabs, active: activeFile, expandedFolders: Array.from(expandedFolders) };
+            try {
+                const db = await openDB();
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).put(state, 'currentSession');
+                showStatus("Auto-saved", "ph-check");
+            } catch (e) { console.error(e); }
+        }
+
+        function resetToDefault(save = true) {
+            fileSystem = JSON.parse(JSON.stringify(defaultFiles));
+            openTabs = ["index.html", "css/style.css", "js/script.js"];
+            activeFile = "index.html";
+            expandedFolders = new Set(['', 'css', 'js', 'assets']);
+            if(save) saveState();
+        }
+
+        function isBinaryFile(filename) { return /\.(png|jpe?g|gif|webp|svg|ico|bmp|woff2?|ttf|eot)$/i.test(filename); }
+
+        // --- Ace Editor Initialization ---
+        ace.require("ace/ext/language_tools");
+        ace.require("ace/ext/searchbox");
+        const editor = ace.edit("editor");
+        
+        function applyEditorSettings() {
+            editor.setTheme(appSettings.editorTheme);
+            editor.setOptions({
+                fontSize: appSettings.fontSize, fontFamily: appSettings.fontFamily, showLineNumbers: appSettings.lineNumbers, wrap: appSettings.wordWrap,
+                enableBasicAutocompletion: true, enableSnippets: true, enableLiveAutocompletion: true, showPrintMargin: false, tabSize: 4, useSoftTabs: true, scrollPastEnd: 0.5
+            });
+        }
+
+        // --- Tree Rendering & Context Menus ---
+        function showStatus(text, iconClass = "ph-info") {
+            const status = document.getElementById('status-msg');
+            status.innerHTML = `<i class="ph ${iconClass} mr-1"></i>${text}`;
+            setTimeout(() => { if(status.innerText.includes(text)) status.innerHTML = `<i class="ph ph-check-circle mr-1"></i>Ready`; }, 2500);
+        }
+
+        function buildTreeObj(paths) {
+            const root = {};
+            paths.forEach(path => {
+                const parts = path.split('/');
+                let current = root;
+                for(let i=0; i<parts.length; i++) {
+                    const part = parts[i];
+                    if(i === parts.length - 1) current[part] = path;
+                    else { current[part] = current[part] || {}; current = current[part]; }
+                }
+            });
+            return root;
+        }
+
+        function renderTreeNodes(node, currentPath, container, depth = 0) {
+            const keys = Object.keys(node).sort((a,b) => {
+                const aIsObj = typeof node[a] === 'object';
+                const bIsObj = typeof node[b] === 'object';
+                if(aIsObj && !bIsObj) return -1; if(!aIsObj && bIsObj) return 1;
+                return a.localeCompare(b);
+            });
+
+            keys.forEach(key => {
+                const isFolder = typeof node[key] === 'object';
+                const fullPath = currentPath ? `${currentPath}/${key}` : key;
+                
+                const el = document.createElement('div');
+                const padding = depth * 14 + 12;
+                el.className = `flex items-center py-1 text-[13px] group cursor-pointer hover:bg-vs-hover transition-colors ${!isFolder && fullPath === activeFile ? 'bg-vs-accent text-white' : 'text-gray-300'}`;
+                el.style.paddingLeft = `${padding}px`; el.style.paddingRight = '12px';
+                el.oncontextmenu = (e) => showContextMenu(e, fullPath, isFolder);
+                
+                if (isFolder) {
+                    const isOpen = expandedFolders.has(fullPath);
+                    el.innerHTML = `<i class="ph-fill ${isOpen ? 'ph-folder-open text-yellow-500' : 'ph-folder text-yellow-600'} mr-2 text-base transition-transform"></i><span class="truncate flex-1 select-none">${key}</span>`;
+                    el.onclick = (e) => { e.stopPropagation(); isOpen ? expandedFolders.delete(fullPath) : expandedFolders.add(fullPath); renderFileTree(); saveState(); };
+                    container.appendChild(el);
+                    if (isOpen) renderTreeNodes(node[key], fullPath, container, depth + 1);
+                } else {
+                    let icon = 'ph-file'; let color = 'text-gray-400';
+                    if (key.endsWith('.html')) { icon = 'ph-file-html'; color = 'text-orange-400'; }
+                    else if (key.endsWith('.css')) { icon = 'ph-file-css'; color = 'text-blue-400'; }
+                    else if (key.endsWith('.js')) { icon = 'ph-file-js'; color = 'text-yellow-400'; }
+                    else if (key.endsWith('.json')) { icon = 'ph-file-code'; color = 'text-green-400'; }
+                    else if (isBinaryFile(key)) { icon = 'ph-image'; color = 'text-purple-400'; }
+                    
+                    el.innerHTML = `<i class="ph-fill ${icon} ${color} mr-2 text-base"></i><span class="truncate flex-1 select-none" title="${key}">${key}</span>`;
+                    el.onclick = () => openFile(fullPath);
+                    container.appendChild(el);
+                }
+            });
+        }
+
+        function renderFileTree() {
+            const tree = document.getElementById('file-tree');
+            tree.innerHTML = '';
+            const treeObj = buildTreeObj(Object.keys(fileSystem));
+            renderTreeNodes(treeObj, '', tree);
+        }
+
+        function renderTabs() {
+            const container = document.getElementById('tabs-container');
+            container.innerHTML = '';
+            openTabs = openTabs.filter(f => fileSystem.hasOwnProperty(f));
+
+            openTabs.forEach(filename => {
+                const el = document.createElement('div');
+                el.className = `editor-tab flex items-center px-3 py-2 text-[13px] group ${filename === activeFile ? 'active' : 'bg-vs-tab text-vs-text opacity-70'}`;
+                const name = filename.split('/').pop();
+                let icon = 'ph-file'; let color = 'text-gray-400';
+                if (name.endsWith('.html')) { icon = 'ph-file-html'; color = 'text-orange-400'; }
+                else if (name.endsWith('.css')) { icon = 'ph-file-css'; color = 'text-blue-400'; }
+                else if (name.endsWith('.js')) { icon = 'ph-file-js'; color = 'text-yellow-400'; }
+                else if (isBinaryFile(name)) { icon = 'ph-image'; color = 'text-purple-400'; }
+                
+                el.innerHTML = `<i class="ph-fill ${icon} ${color} mr-2"></i><span class="truncate flex-1 select-none" title="${filename}">${name}</span><i class="ph ph-x ml-2 opacity-0 group-hover:opacity-100 close-btn p-0.5" onclick="closeTab(event, '${filename}')"></i>`;
+                if(filename === activeFile && window.innerWidth < 768) el.querySelector('.close-btn').classList.remove('opacity-0');
+                el.onclick = () => openFile(filename);
+                container.appendChild(el);
+            });
+
+            const emptyState = document.getElementById('empty-state');
+            if (openTabs.length === 0 || !activeFile) {
+                emptyState.classList.remove('hidden');
+                document.getElementById('editor').style.display = 'none';
+                document.getElementById('image-viewer').style.display = 'none';
+                activeFile = null;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+        }
+
+        function showContextMenu(e, path, isFolder) {
+            e.preventDefault(); e.stopPropagation();
+            ctxTarget = path; ctxIsFolder = isFolder;
+            const menu = document.getElementById('context-menu');
+            menu.style.left = `${e.pageX}px`; menu.style.top = `${e.pageY}px`;
+            menu.classList.remove('hidden');
+
+            const isCss = !isFolder && path.endsWith('.css');
+            const isJs = !isFolder && path.endsWith('.js');
+            const isImg = !isFolder && isBinaryFile(path);
+            
+            document.getElementById('ctx-divider').classList.toggle('hidden', !isCss && !isJs && !isImg);
+            document.getElementById('ctx-insert-css').classList.toggle('hidden', !isCss);
+            document.getElementById('ctx-insert-js').classList.toggle('hidden', !isJs);
+            document.getElementById('ctx-insert-img').classList.toggle('hidden', !isImg);
+        }
+        function hideContextMenu() { document.getElementById('context-menu').classList.add('hidden'); }
+
+        function handleCtxAction(action) {
+            hideContextMenu();
+            if(action === 'rename') renameItem(ctxTarget, ctxIsFolder);
+            if(action === 'delete') deleteItem(ctxTarget, ctxIsFolder);
+            if(action === 'insert-css') insertCtxAsset('css');
+            if(action === 'insert-js') insertCtxAsset('js');
+            if(action === 'insert-img') insertCtxAsset('img');
+        }
+
+        function insertCtxAsset(type) {
+            if(!activeFile || isBinaryFile(activeFile)) { Toast.fire({icon:'warning', title: 'Open a text file to insert links.'}); return; }
+            let text = '';
+            if(type === 'css') text = `<link rel="stylesheet" href="${ctxTarget}">\n`;
+            if(type === 'js') text = `<script src="${ctxTarget}"><\/script>\n`;
+            if(type === 'img') text = `<img src="${ctxTarget}" alt="${ctxTarget.split('/').pop()}">\n`;
+            editor.insert(text); editor.focus();
+        }
+
+        // --- File Operations ---
+        function getFileMode(filename) {
+            if (filename.endsWith('.html')) return 'ace/mode/html';
+            if (filename.endsWith('.css')) return 'ace/mode/css';
+            if (filename.endsWith('.js')) return 'ace/mode/javascript';
+            if (filename.endsWith('.json')) return 'ace/mode/json';
+            return 'ace/mode/text';
+        }
+
+        function openFile(filename) {
+            if (!fileSystem.hasOwnProperty(filename)) return;
+            if (activeFile && activeFile !== filename && fileSystem[activeFile] !== undefined) {
+                if(!isBinaryFile(activeFile)) fileSystem[activeFile] = editor.getValue();
+            }
+            if (!openTabs.includes(filename)) openTabs.push(filename);
+            activeFile = filename;
+
+            const isImg = isBinaryFile(filename);
+            const editorDiv = document.getElementById('editor');
+            const imgViewer = document.getElementById('image-viewer');
+            const imgEl = document.getElementById('viewer-img');
+
+            if(isImg) {
+                editorDiv.style.display = 'none';
+                imgViewer.style.display = 'flex';
+                imgEl.src = fileSystem[filename];
+                document.getElementById('status-mode').innerText = 'ASSET';
+            } else {
+                editorDiv.style.display = 'block';
+                imgViewer.style.display = 'none';
+                editor.session.off('change', onEditorChange);
+                editor.setValue(fileSystem[filename] || "", -1);
+                editor.session.setMode(getFileMode(filename));
+                document.getElementById('status-mode').innerText = getFileMode(filename).split('/').pop().toUpperCase();
+                editor.session.on('change', onEditorChange);
+                editor.focus();
+            }
+
+            renderFileTree(); renderTabs(); saveState();
+        }
+
+        function closeTab(event, filename) {
+            event.stopPropagation();
+            openTabs = openTabs.filter(f => f !== filename);
+            if (activeFile === filename) {
+                activeFile = openTabs.length > 0 ? openTabs[openTabs.length - 1] : null;
+                if(activeFile) openFile(activeFile);
+            }
+            renderFileTree(); renderTabs(); saveState();
+        }
+
+        async function createNewFile() {
+            const { value: filename } = await Modal.fire({
+                title: 'Create New File', input: 'text', inputPlaceholder: 'e.g., script.js, css/style.css', showCancelButton: true, confirmButtonText: 'Create',
+                inputValidator: (value) => { if (!value) return 'Name cannot be empty!'; if (fileSystem[value.trim()]) return 'File already exists!'; }
+            });
+            if (filename) {
+                const cleanName = filename.trim();
+                fileSystem[cleanName] = "";
+                const parts = cleanName.split('/');
+                if(parts.length > 1) expandedFolders.add(parts.slice(0,-1).join('/')); // auto expand new folders
+                openFile(cleanName);
+                Toast.fire({ icon: 'success', title: `Created ${cleanName}` });
+            }
+        }
+
+        async function deleteItem(path, isFolder) {
+            const result = await Modal.fire({
+                title: `Delete '${path.split('/').pop()}'?`, text: isFolder ? "Folder and its contents will be permanently deleted." : "File will be permanently deleted.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#f48771', confirmButtonText: 'Yes, delete it!'
+            });
+            if (result.isConfirmed) {
+                if (isFolder) {
+                    const prefix = path + '/';
+                    Object.keys(fileSystem).forEach(key => { if (key.startsWith(prefix)) { delete fileSystem[key]; openTabs = openTabs.filter(f => f !== key); } });
+                } else {
+                    delete fileSystem[path]; openTabs = openTabs.filter(f => f !== path);
+                }
+                if (activeFile && !fileSystem[activeFile]) { activeFile = openTabs.length > 0 ? openTabs[0] : null; if (activeFile) openFile(activeFile); }
+                renderFileTree(); renderTabs(); saveState(); runPreview(true); Toast.fire({ icon: 'success', title: 'Deleted successfully.' });
+            }
+        }
+
+        async function renameItem(path, isFolder) {
+            const oldName = path.split('/').pop();
+            const basePath = path.substring(0, path.lastIndexOf('/') + 1);
+            const { value: newName } = await Modal.fire({
+                title: isFolder ? 'Rename Folder' : 'Rename File', input: 'text', inputValue: oldName, showCancelButton: true,
+                inputValidator: (value) => {
+                    if (!value || value === oldName) return 'Please provide a new name.';
+                    const newPath = basePath + value.trim();
+                    if (!isFolder && fileSystem[newPath]) return 'Exists already!';
+                }
+            });
+            if (newName) {
+                const newPath = basePath + newName.trim();
+                if (isFolder) {
+                    const prefix = path + '/'; const newPrefix = newPath + '/';
+                    Object.keys(fileSystem).forEach(key => {
+                        if (key.startsWith(prefix)) {
+                            const newKey = key.replace(prefix, newPrefix);
+                            fileSystem[newKey] = fileSystem[key]; delete fileSystem[key];
+                            const tabIndex = openTabs.indexOf(key); if(tabIndex !== -1) openTabs[tabIndex] = newKey;
+                            if(activeFile === key) activeFile = newKey;
+                        }
+                    });
+                } else {
+                    fileSystem[newPath] = fileSystem[path]; delete fileSystem[path];
+                    const tabIndex = openTabs.indexOf(path); if (tabIndex !== -1) openTabs[tabIndex] = newPath;
+                    if (activeFile === path) activeFile = newPath;
+                }
+                renderFileTree(); renderTabs();
+                if (activeFile === newPath) openFile(newPath); // Refresh state
+                saveState(); runPreview(true); Toast.fire({ icon: 'success', title: 'Renamed successfully.' });
+            }
+        }
+
+        async function resetWorkspace() {
+            const result = await Modal.fire({ title: 'Reset Workspace?', text: "All files and assets will be lost.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#f48771', confirmButtonText: 'Yes, reset it!' });
+            if(result.isConfirmed) { resetToDefault(true); renderFileTree(); renderTabs(); openFile(activeFile); runPreview(true); Toast.fire({ icon: 'success', title: 'Workspace reset to default.' }); }
+        }
+
+        function copyActiveCode() {
+            if(!activeFile || isBinaryFile(activeFile)) return;
+            navigator.clipboard.writeText(editor.getValue()).then(() => Toast.fire({ icon: 'success', title: 'Code copied!' }));
+        }
+
+        // --- Editor Events & Live Preview Asset Engine ---
+        function onEditorChange() {
+            if (isInitializing) return;
+            if (appSettings.autoSave) { clearTimeout(saveTimeout); saveTimeout = setTimeout(() => { saveState(); runPreview(false); }, 800); }
+        }
+
+        editor.selection.on('changeCursor', () => { const pos = editor.getCursorPosition(); document.getElementById('status-cursor').innerText = `Ln ${pos.row + 1}, Col ${pos.column + 1}`; });
+        editor.commands.addCommand({ name: 'save', bindKey: {win: "Ctrl-S", "mac": "Cmd-S"}, exec: function() { saveState(); runPreview(true); Toast.fire({ icon: 'success', title: 'Saved.' }); }});
+        editor.commands.addCommand({ name: 'run', bindKey: {win: "Ctrl-Enter", "mac": "Cmd-Enter"}, exec: function() { saveState(); runPreview(true); }});
+        function formatCode() { ace.require("ace/ext/beautify").beautify(editor.session); saveState(); Toast.fire({ icon: 'success', title: 'Formatted.' }); }
+
+        function resolveRelativePath(basePath, relativeUrl) {
+            if (relativeUrl.startsWith('http') || relativeUrl.startsWith('data:') || relativeUrl.startsWith('#')) return relativeUrl;
+            const parts = basePath.split('/').slice(0, -1);
+            if(relativeUrl.startsWith('/')) relativeUrl = relativeUrl.substring(1);
+            for (let p of relativeUrl.split('/')) {
+                if (p === '.') continue;
+                if (p === '..') parts.pop();
+                else parts.push(p);
+            }
+            return parts.join('/');
+        }
+
+        function runPreview(explicitRun = false) {
+            const iframe = document.getElementById('preview-iframe');
+            if (activeFile && !isBinaryFile(activeFile)) fileSystem[activeFile] = editor.getValue();
+            let html = fileSystem['index.html'] || '<div style="color:red; font-family:sans-serif; padding:20px;">No index.html found.</div>';
+            
+            if (appSettings.enableTailwind) {
+                const tailwindScript = '<script src="https://cdn.tailwindcss.com"><\/script>';
+                html = html.includes('<head>') ? html.replace('<head>', '<head>\n    ' + tailwindScript) : tailwindScript + '\n' + html;
+            }
+
+            // CSS Processor: replaces CSS files and resolves inner url() assets
+            html = html.replace(/<link\s+[^>]*href=["']([^"']+)["'][^>]*>/gi, (match, url) => {
+                const resolvedCSSPath = resolveRelativePath('index.html', url);
+                if (fileSystem[resolvedCSSPath]) {
+                    let cssContent = fileSystem[resolvedCSSPath];
+                    cssContent = cssContent.replace(/url\(['"]?([^'"()]+)['"]?\)/g, (urlMatch, assetUrl) => {
+                        const resolvedAsset = resolveRelativePath(resolvedCSSPath, assetUrl);
+                        if (fileSystem[resolvedAsset]) return `url("${fileSystem[resolvedAsset]}")`;
+                        return urlMatch;
+                    });
+                    return `<style>\n/* Injected ${url} */\n${cssContent}\n</style>`;
+                }
+                return match;
+            });
+
+            // JS Processor
+            html = html.replace(/<script\s+[^>]*src=["']([^"']+)["'][^>]*><\/script>/gi, (match, url) => {
+                const resolvedJSPath = resolveRelativePath('index.html', url);
+                if (fileSystem[resolvedJSPath]) {
+                    const safeCode = fileSystem[resolvedJSPath].replace(/<\/script>/gi, '<\\/script>');
+                    return `<script>try { ${safeCode} } catch(err) { console.error("[${url}] Error: " + err.message + "\\nLine: " + err.lineNumber); }<\/script>`;
+                }
+                return match;
+            });
+
+            // Generic Asset Replacer for HTML (Images, Fonts in style blocks)
+            html = html.replace(/(href|src)=["']([^"']+)["']/gi, (match, attr, url) => {
+                const resolvedAsset = resolveRelativePath('index.html', url);
+                if (fileSystem[resolvedAsset]) return `${attr}="${fileSystem[resolvedAsset]}"`;
+                return match;
+            });
+
+            const consoleScript = `<script>
+                (function() {
+                    const _log = console.log, _warn = console.warn, _error = console.error, _info = console.info;
+                    function safeSerialize(args) { return Array.from(args).map(arg => { if (arg instanceof Error) return arg.toString(); if (typeof arg === 'object' && arg !== null) { if(arg instanceof HTMLElement) return '<' + arg.tagName.toLowerCase() + '>'; try { return JSON.stringify(arg, null, 2); } catch (e) { return Object.prototype.toString.call(arg); } } return String(arg); }); }
+                    function post(type, args) { window.parent.postMessage({ source: 'editor-preview', type: type, args: safeSerialize(args) }, '*'); }
+                    console.log = function() { post('log', arguments); _log.apply(console, arguments); };
+                    console.warn = function() { post('warn', arguments); _warn.apply(console, arguments); };
+                    console.error = function() { post('error', arguments); _error.apply(console, arguments); };
+                    console.info = function() { post('info', arguments); _info.apply(console, arguments); };
+                    window.addEventListener('error', function(e) { post('error', [e.message + ' at line ' + e.lineno]); });
+                })();
+            <\/script>`;
+
+            html = html.includes('<head>') ? html.replace('<head>', '<head>\n    ' + consoleScript) : consoleScript + '\n' + html;
+
+            if(explicitRun) { clearConsole(); appendLog('info', ['[System] Building and reloading preview...']); }
+            iframe.srcdoc = html; document.getElementById('preview-area').classList.remove('hidden');
+        }
+
+        window.addEventListener('message', (e) => { if (e.data && e.data.source === 'editor-preview') appendLog(e.data.type, e.data.args); });
+        function appendLog(type, args) {
+            const consoleOut = document.getElementById('console-output'); const el = document.createElement('div'); el.className = `log-entry log-${type}`;
+            const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
+            el.innerHTML = `<span class="opacity-50 mr-2 select-none">[${time}]</span><span class="break-all">${args.join(' ')}</span>`;
+            consoleOut.appendChild(el); consoleOut.scrollTop = consoleOut.scrollHeight;
+        }
+        function clearConsole() { document.getElementById('console-output').innerHTML = ''; }
+
+        // --- Layout, Settings, Drag & Drop, Zip logic ---
+        function openSettings() { syncUIWithSettings(); document.getElementById('settings-modal').classList.remove('opacity-0', 'pointer-events-none'); document.getElementById('settings-content').classList.remove('scale-95'); document.getElementById('settings-content').classList.add('scale-100'); }
+        function closeSettings() { document.getElementById('settings-modal').classList.add('opacity-0', 'pointer-events-none'); document.getElementById('settings-content').classList.remove('scale-100'); document.getElementById('settings-content').classList.add('scale-95'); }
+        function switchSettingsTab(tabId, btnElement) { document.querySelectorAll('.settings-section').forEach(el => el.classList.add('hidden')); document.getElementById(`sec-${tabId}`).classList.remove('hidden'); document.querySelectorAll('.settings-tab').forEach(el => el.classList.remove('active', 'bg-vs-accent', 'text-white')); btnElement.classList.add('active'); }
+
+        function applyThemeVariables() {
+            const root = document.documentElement;
+            if (appSettings.appTheme === 'custom') {
+                root.style.setProperty('--bg-dark', appSettings.customBg); root.style.setProperty('--bg-panel', appSettings.customBg); root.style.setProperty('--bg-sidebar', shadeColor(appSettings.customBg, 10)); root.style.setProperty('--bg-bar', shadeColor(appSettings.customBg, 20)); root.style.setProperty('--border-color', shadeColor(appSettings.customBg, 30)); root.style.setProperty('--bg-tab', shadeColor(appSettings.customBg, 15)); root.style.setProperty('--bg-tab-active', appSettings.customBg); root.style.setProperty('--text-main', appSettings.customText); root.style.setProperty('--accent-color', appSettings.customAccent); root.style.setProperty('--bg-hover', shadeColor(appSettings.customBg, 25)); document.getElementById('custom-colors-box').classList.remove('hidden');
+            } else {
+                const p = appThemes[appSettings.appTheme] || appThemes.vscode;
+                root.style.setProperty('--bg-dark', p.bgDark); root.style.setProperty('--bg-panel', p.bgPanel); root.style.setProperty('--bg-sidebar', p.bgSidebar); root.style.setProperty('--bg-bar', p.bgBar); root.style.setProperty('--border-color', p.border); root.style.setProperty('--bg-tab', p.bgTab); root.style.setProperty('--bg-tab-active', p.bgTabActive); root.style.setProperty('--text-main', p.textMain); root.style.setProperty('--accent-color', p.accent); root.style.setProperty('--bg-hover', p.hover); document.getElementById('custom-colors-box').classList.add('hidden');
+            }
+        }
+        function shadeColor(color, percent) { let R = parseInt(color.substring(1,3),16); let G = parseInt(color.substring(3,5),16); let B = parseInt(color.substring(5,7),16); R = parseInt(R * (100 + percent) / 100); G = parseInt(G * (100 + percent) / 100); B = parseInt(B * (100 + percent) / 100); R = (R<255)?R:255; G = (G<255)?G:255; B = (B<255)?B:255; R = Math.round(R); G = Math.round(G); B = Math.round(B); const RR = ((R.toString(16).length==1)?"0"+R.toString(16):R.toString(16)); const GG = ((G.toString(16).length==1)?"0"+G.toString(16):G.toString(16)); const BB = ((B.toString(16).length==1)?"0"+B.toString(16):B.toString(16)); return "#"+RR+GG+BB; }
+
+        function saveSettingsToStorage() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings)); }
+        function bindSettingsUI() {
+            const bind = (id, key, isCheck = false, cb = null) => { document.getElementById(id)?.addEventListener('change', (e) => { appSettings[key] = isCheck ? e.target.checked : e.target.value; saveSettingsToStorage(); if(cb) cb(); }); };
+            bind('set-fontsize', 'fontSize', false, applyEditorSettings); bind('set-fontfamily', 'fontFamily', false, applyEditorSettings); bind('set-linenumbers', 'lineNumbers', true, applyEditorSettings); bind('set-wordwrap', 'wordWrap', true, applyEditorSettings); bind('set-autosave', 'autoSave', true); bind('set-tailwind', 'enableTailwind', true, () => runPreview(false)); bind('set-editortheme', 'editorTheme', false, applyEditorSettings); bind('set-apptheme', 'appTheme', false, applyThemeVariables); bind('set-bgcolor', 'customBg', false, applyThemeVariables); bind('set-textcolor', 'customText', false, applyThemeVariables); bind('set-accentcolor', 'customAccent', false, applyThemeVariables);
+            bind('set-sidebar', 'showSidebar', true, () => { document.getElementById('sidebar').classList.toggle('hidden-sidebar', !appSettings.showSidebar); document.getElementById('resizer-sidebar').classList.toggle('hidden', !appSettings.showSidebar); setTimeout(() => editor.resize(), 200); });
+            bind('set-console', 'showConsole', true, () => { document.getElementById('bottom-panel').classList.toggle('hidden', !appSettings.showConsole); document.getElementById('resizer-bottom').classList.toggle('hidden', !appSettings.showConsole); setTimeout(() => editor.resize(), 200); });
+        }
+        function syncUIWithSettings() { document.getElementById('set-fontsize').value = appSettings.fontSize; document.getElementById('set-fontfamily').value = appSettings.fontFamily; document.getElementById('set-linenumbers').checked = appSettings.lineNumbers; document.getElementById('set-wordwrap').checked = appSettings.wordWrap; document.getElementById('set-autosave').checked = appSettings.autoSave; document.getElementById('set-tailwind').checked = appSettings.enableTailwind; document.getElementById('set-apptheme').value = appSettings.appTheme; document.getElementById('set-editortheme').value = appSettings.editorTheme; document.getElementById('set-sidebar').checked = appSettings.showSidebar; document.getElementById('set-console').checked = appSettings.showConsole; document.getElementById('set-bgcolor').value = appSettings.customBg; document.getElementById('set-textcolor').value = appSettings.customText; document.getElementById('set-accentcolor').value = appSettings.customAccent; applyThemeVariables(); }
+        async function factoryResetSettings() { const result = await Modal.fire({ title: 'Reset Settings?', text: 'Reverts preferences.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#f48771', confirmButtonText: 'Reset' }); if(result.isConfirmed) { appSettings = { ...defaultSettings }; saveSettingsToStorage(); syncUIWithSettings(); applyEditorSettings(); runPreview(true); Toast.fire({ icon: 'success', title: 'Settings reset.' }); } }
+
+        function toggleSidebar() { appSettings.showSidebar = !appSettings.showSidebar; saveSettingsToStorage(); syncUIWithSettings(); document.getElementById('sidebar').classList.toggle('hidden-sidebar', !appSettings.showSidebar); document.getElementById('resizer-sidebar').classList.toggle('hidden', !appSettings.showSidebar); setTimeout(() => editor.resize(), 200); }
+        function toggleBottomPanel() { appSettings.showConsole = !appSettings.showConsole; saveSettingsToStorage(); syncUIWithSettings(); document.getElementById('bottom-panel').classList.toggle('hidden', !appSettings.showConsole); document.getElementById('resizer-bottom').classList.toggle('hidden', !appSettings.showConsole); setTimeout(() => editor.resize(), 200); }
+        function togglePreview() { document.getElementById('preview-area').classList.toggle('hidden'); document.getElementById('resizer-preview').classList.toggle('hidden'); setTimeout(() => editor.resize(), 200); }
+        function toggleFullScreen() { if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); } else if (document.exitFullscreen) { document.exitFullscreen(); } }
+        window.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); const modal = document.getElementById('settings-modal'); if (modal.classList.contains('opacity-0')) openSettings(); else closeSettings(); } });
+
+        function initResizer(resizerId, panelId, isVertical = false) {
+            const resizer = document.getElementById(resizerId); const panel = document.getElementById(panelId); let isResizing = false; let startPos, startSize;
+            resizer.addEventListener('mousedown', (e) => { isResizing = true; startPos = isVertical ? e.clientY : e.clientX; startSize = isVertical ? panel.offsetHeight : panel.offsetWidth; document.body.style.cursor = isVertical ? 'row-resize' : 'col-resize'; resizer.classList.add('resizing'); document.querySelector('.layout-container').classList.add('resizing'); });
+            window.addEventListener('mousemove', (e) => { if (!isResizing) return; e.preventDefault(); if (isVertical) { const diff = startPos - e.clientY; panel.style.height = `${Math.max(100, Math.min(window.innerHeight - 200, startSize + diff))}px`; } else { const diff = e.clientX - startPos; panel.style.width = `${Math.max(150, Math.min(window.innerWidth - 300, startSize + (panelId === 'preview-area' ? -diff : diff)))}px`; } editor.resize(); });
+            window.addEventListener('mouseup', () => { if (isResizing) { isResizing = false; document.body.style.cursor = ''; resizer.classList.remove('resizing'); document.querySelector('.layout-container').classList.remove('resizing'); } });
+        }
+
+        async function exportZip() { Toast.fire({ icon: 'info', title: 'Generating ZIP...', timer: 1000 }); saveState(); const zip = new JSZip(); for (const [filename, content] of Object.entries(fileSystem)) { zip.file(filename, content); } try { const content = await zip.generateAsync({ type: "blob" }); const url = URL.createObjectURL(content); const a = document.createElement('a'); a.href = url; a.download = "workspace.zip"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); Toast.fire({ icon: 'success', title: 'Export complete!' }); } catch (e) { Toast.fire({ icon: 'error', title: 'Export failed.' }); } }
+
+        async function importFiles(event) {
+            const files = event.target.files; if (!files.length) return; Toast.fire({ icon: 'info', title: 'Importing files...', timer: 2000 }); let loadedCount = 0; let firstFile = null;
+            const promises = Array.from(files).map(file => {
+                return new Promise((resolve) => {
+                    if (file.name.match(/\.(exe|dll|zip|tar|gz|bin)$/i)) { resolve(); return; }
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const path = file.webkitRelativePath || file.name;
+                        fileSystem[path] = e.target.result;
+                        const parts = path.split('/'); if(parts.length > 1) { const folderPath = parts.slice(0,-1).join('/'); expandedFolders.add(folderPath); }
+                        if (!firstFile) firstFile = path; loadedCount++; resolve();
+                    };
+                    reader.onerror = resolve;
+                    if (isBinaryFile(file.name)) reader.readAsDataURL(file); else reader.readAsText(file);
+                });
+            });
+            await Promise.all(promises);
+            if (loadedCount > 0) { renderFileTree(); if (firstFile) openFile(firstFile); saveState(); Toast.fire({ icon: 'success', title: `Imported ${loadedCount} files/assets.` }); if (fileSystem['index.html']) runPreview(true); } 
+            else Toast.fire({ icon: 'warning', title: 'No files imported.' });
+            event.target.value = '';
+        }
+
+        const dropZone = document.getElementById('drop-zone');
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('opacity-80'); }); dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.classList.remove('opacity-80'); });
+        dropZone.addEventListener('drop', async (e) => {
+            e.preventDefault(); dropZone.classList.remove('opacity-80'); const items = e.dataTransfer.items; if (!items) return;
+            Toast.fire({ icon: 'info', title: 'Processing dropped items...', timer: 2000 }); let loadedCount = 0; let firstFile = null;
+            const processFile = (file, path) => {
+                return new Promise((resolve) => {
+                    if (file.name.match(/\.(exe|dll|zip|tar|gz|bin)$/i)) { resolve(); return; }
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        const fullPath = path ? `${path}/${file.name}` : file.name;
+                        fileSystem[fullPath] = ev.target.result;
+                        if(path) expandedFolders.add(path);
+                        if (!firstFile) firstFile = fullPath; loadedCount++; resolve();
+                    };
+                    reader.onerror = resolve;
+                    if (isBinaryFile(file.name)) reader.readAsDataURL(file); else reader.readAsText(file);
+                });
+            };
+            const processEntry = async (entry, path = '') => {
+                if (entry.isFile) { const file = await new Promise(resolve => entry.file(resolve)); await processFile(file, path); } 
+                else if (entry.isDirectory) {
+                    const dirReader = entry.createReader(); let entries = [];
+                    let readEntries = await new Promise(resolve => dirReader.readEntries(resolve));
+                    while(readEntries.length > 0) { entries.push(...readEntries); readEntries = await new Promise(resolve => dirReader.readEntries(resolve)); }
+                    for (const child of entries) { await processEntry(child, path ? `${path}/${entry.name}` : entry.name); }
+                }
+            };
+            const promises = []; for (let i = 0; i < items.length; i++) { const item = items[i]; if (item.kind === 'file') { const entry = item.webkitGetAsEntry(); if (entry) promises.push(processEntry(entry)); } }
+            await Promise.all(promises);
+            if (loadedCount > 0) { renderFileTree(); if (firstFile) openFile(firstFile); saveState(); Toast.fire({ icon: 'success', title: `Imported ${loadedCount} items.` }); if (fileSystem['index.html']) runPreview(true); } 
+            else Toast.fire({ icon: 'warning', title: 'No files dropped.' });
+        });
+
+        // --- Boot Sequence ---
+        async function initWorkspace() {
+            initSettings(); await loadState(); renderFileTree(); renderTabs();
+            if (activeFile && fileSystem[activeFile] !== undefined) openFile(activeFile);
+            applyEditorSettings(); syncUIWithSettings();
+            initResizer('resizer-sidebar', 'sidebar', false); initResizer('resizer-preview', 'preview-area', false); initResizer('resizer-bottom', 'bottom-panel', true);
+            if (window.innerWidth < 768) { if(appSettings.showSidebar) toggleSidebar(); togglePreview(); } else runPreview(false);
+            isInitializing = false; document.getElementById('loader-overlay').style.opacity = '0'; setTimeout(() => document.getElementById('loader-overlay').style.display = 'none', 300);
+        }
+        window.onload = initWorkspace;
+
+    </script>
+</body>
+</html>
